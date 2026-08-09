@@ -7,6 +7,25 @@ import { streamText, type ModelMessage } from 'ai';
 import { createGitLab, MODEL_MAPPINGS } from 'gitlab-ai-provider';
 import { getValidTokens, startDeviceAuthorization, pollForDeviceToken } from './oauth.js';
 
+function isAbortError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.name === 'AbortError' ||
+      err.name === 'APIUserAbortError' ||
+      err.message.includes('aborted'))
+  );
+}
+
+process.on('unhandledRejection', (err) => {
+  if (isAbortError(err)) return;
+  process.stderr.write(`Unhandled rejection: ${err instanceof Error ? err.stack : err}\n`);
+});
+
+process.on('uncaughtException', (err) => {
+  if (isAbortError(err)) return;
+  process.stderr.write(`Uncaught exception: ${err.stack}\n`);
+});
+
 const INSTANCE_URL = process.env.GITLAB_INSTANCE_URL ?? 'https://gitlab.com';
 const DEFAULT_MODEL = 'duo-chat-sonnet-4-5';
 const MODEL_IDS = Object.keys(MODEL_MAPPINGS);
@@ -127,9 +146,9 @@ async function runPrompt(
       session.messages.push({ role: 'assistant', content: assistantText });
     }
 
-    return { stopReason: 'end_turn' };
+    return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
   } catch (err) {
-    if (abort.signal.aborted) {
+    if (abort.signal.aborted || isAbortError(err)) {
       return { stopReason: 'cancelled' };
     }
     throw err;
