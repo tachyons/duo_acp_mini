@@ -3,9 +3,10 @@ import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import * as acp from '@agentclientprotocol/sdk';
-import { streamText, type ModelMessage } from 'ai';
+import { streamText, stepCountIs, type ModelMessage } from 'ai';
 import { createGitLab, MODEL_MAPPINGS } from 'gitlab-ai-provider';
 import { getValidTokens, startDeviceAuthorization, pollForDeviceToken } from './oauth.js';
+import { buildTools, type ToolSessionContext } from './tools.js';
 
 function isAbortError(err: unknown): boolean {
   return (
@@ -29,14 +30,26 @@ process.on('uncaughtException', (err) => {
 const INSTANCE_URL = process.env.GITLAB_INSTANCE_URL ?? 'https://gitlab.com';
 const DEFAULT_MODEL = 'duo-chat-sonnet-4-5';
 const MODEL_IDS = Object.keys(MODEL_MAPPINGS);
+const MAX_STEPS = 25;
+
+const SYSTEM_PROMPT =
+  'You are GitLab Duo, a coding assistant running inside a code editor. ' +
+  'You can read and modify files in the user workspace using the provided tools. ' +
+  'Use read_file to inspect files before editing them. Prefer edit_file for targeted ' +
+  'changes and write_file for new files or full rewrites. File paths may be relative ' +
+  'to the project root.';
 
 interface Session {
   messages: ModelMessage[];
   abort: AbortController | null;
   modelId: string;
+  cwd: string;
+  alwaysAllowedWrites: boolean;
 }
 
 const sessions = new Map<string, Session>();
+
+let clientFsCapabilities = { readTextFile: false, writeTextFile: false };
 
 function modelConfigOption(currentValue: string): acp.SessionConfigOption {
   return {
@@ -123,28 +136,40 @@ async function runPrompt(
 
   session.messages.push({ role: 'user', content: promptToText(params.prompt) });
 
+  const toolsEnabled = clientFsCapabilities.readTextFile && clientFsCapabilities.writeTextFile;
+  const toolCtx: ToolSessionContext = {
+    sessionId: params.sessionId,
+    cwd: session.cwd,
+    client,
+    alwaysAllowedWrites: session.alwaysAllowedWrites,
+  };
+
   try {
     const result = streamText({
       model: gitlab.agenticChat(session.modelId),
+      system: SYSTEM_PROMPT,
       messages: session.messages,
       abortSignal: abort.signal,
+      ...(toolsEnabled
+        ? { tools: buildTools(toolCtx), stopWhen: stepCountIs(MAX_STEPS) }
+        : {}),
     });
 
-    let assistantText = '';
-    for await (const chunk of result.textStream) {
-      assistantText += chunk;
-      await client.notify(acp.methods.client.session.update, {
-        sessionId: params.sessionId,
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: chunk },
-        },
-      });
+    for await (const part of result.fullStream) {
+      if (part.type === 'text-delta') {
+        await client.notify(acp.methods.client.session.update, {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: part.text },
+          },
+        });
+      }
     }
 
-    if (assistantText) {
-      session.messages.push({ role: 'assistant', content: assistantText });
-    }
+    const response = await result.response;
+    session.messages.push(...response.messages);
+    session.alwaysAllowedWrites = toolCtx.alwaysAllowedWrites;
 
     return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
   } catch (err) {
@@ -166,25 +191,38 @@ const stream = acp.ndJsonStream(
 
 acp
   .agent({ name: 'gitlab-duo-acp' })
-  .onRequest('initialize', () => ({
-    protocolVersion: acp.PROTOCOL_VERSION,
-    agentCapabilities: {
-      loadSession: false,
-      promptCapabilities: { image: false, audio: false, embeddedContext: true },
-    },
-    authMethods: [
-      {
-        id: 'gitlab-oauth',
-        name: 'GitLab OAuth',
-        description: 'Sign in to GitLab with the OAuth device flow',
+  .onRequest('initialize', (ctx) => {
+    const fs = ctx.params.clientCapabilities?.fs;
+    clientFsCapabilities = {
+      readTextFile: fs?.readTextFile === true,
+      writeTextFile: fs?.writeTextFile === true,
+    };
+    return {
+      protocolVersion: acp.PROTOCOL_VERSION,
+      agentCapabilities: {
+        loadSession: false,
+        promptCapabilities: { image: false, audio: false, embeddedContext: true },
       },
-    ],
-  }))
+      authMethods: [
+        {
+          id: 'gitlab-oauth',
+          name: 'GitLab OAuth',
+          description: 'Sign in to GitLab with the OAuth device flow',
+        },
+      ],
+    };
+  })
   .onRequest('authenticate', () => authenticate())
-  .onRequest('session/new', async () => {
+  .onRequest('session/new', async (ctx) => {
     await requireAccessToken();
     const sessionId = randomUUID();
-    sessions.set(sessionId, { messages: [], abort: null, modelId: DEFAULT_MODEL });
+    sessions.set(sessionId, {
+      messages: [],
+      abort: null,
+      modelId: DEFAULT_MODEL,
+      cwd: ctx.params.cwd,
+      alwaysAllowedWrites: false,
+    });
     return {
       sessionId,
       configOptions: [modelConfigOption(DEFAULT_MODEL)],

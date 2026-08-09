@@ -6,7 +6,9 @@ A minimal [Agent Client Protocol (ACP)](https://agentclientprotocol.com) agent f
 
 - **OAuth device flow** — no personal access tokens; sign in via your browser
 - **Selectable models** — pick any GitLab Duo model (Claude, GPT-5) from the client UI
+- **File editing** — read, write, and edit files in your workspace via the editor's file system, with diff previews and user approval for every change
 - **Streaming responses** over stdio (newline-delimited JSON-RPC)
+- No shell access — the agent cannot run arbitrary commands
 - Works with GitLab.com and self-hosted instances
 
 ## Requirements
@@ -76,7 +78,17 @@ npm run build   # compile to dist/
 | `session/prompt`             | Streams `agent_message_chunk` updates        |
 | `session/cancel`             | Aborts the in-flight prompt                  |
 
-Local tool calls are not supported (chat only).
+## Tools
+
+When the client advertises the `fs` capability, the model gets these tools:
+
+| Tool         | Description                                     | Approval |
+| ------------ | ----------------------------------------------- | -------- |
+| `read_file`  | Read a file via `fs/read_text_file`             | No       |
+| `write_file` | Create/overwrite a file via `fs/write_text_file`| Yes      |
+| `edit_file`  | Replace a unique string in a file               | Yes      |
+
+Writes show a diff and require approval via `session/request_permission` ("Always allow edits" is remembered per session). There is no shell/terminal tool — the agent cannot execute commands.
 
 ## License
 
