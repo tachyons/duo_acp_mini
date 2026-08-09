@@ -1,0 +1,34 @@
+{
+  "name": "gitlab-duo-acp",
+  "version": "0.1.0",
+  "description": "Minimal ACP agent for GitLab Duo chat with OAuth device flow authentication and selectable models",
+  "main": "dist/agent.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/agent.js",
+    "dev": "tsx src/agent.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.3.0",
+    "ai": "^7.0.58",
+    "gitlab-ai-provider": "^6.12.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2"
+  },
+  "bin": {
+    "gitlab-duo-acp": "dist/agent.js"
+  },
+  "files": [
+    "dist",
+    "agent.json",
+    "README.md"
+  ]
+}

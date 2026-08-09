@@ -1,0 +1,15 @@
+{
+  "$schema": "https://cdn.agentclientprotocol.com/registry/v1/latest/agent.schema.json",
+  "id": "gitlab-duo-acp",
+  "name": "GitLab Duo",
+  "version": "0.1.0",
+  "description": "Minimal ACP agent for GitLab Duo chat with OAuth device flow authentication and selectable models",
+  "repository": "https://github.com/tachyons/duo_acp_mini",
+  "authors": ["Aboobacker MK"],
+  "license": "MIT",
+  "distribution": {
+    "npx": {
+      "package": "gitlab-duo-acp"
+    }
+  }
+}
