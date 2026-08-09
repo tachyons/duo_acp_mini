@@ -7,6 +7,7 @@ import { streamText, stepCountIs, type ModelMessage } from 'ai';
 import { createGitLab, MODEL_MAPPINGS } from 'gitlab-ai-provider';
 import { getValidTokens, startDeviceAuthorization, pollForDeviceToken } from './oauth.js';
 import { buildTools, type ToolSessionContext } from './tools.js';
+import { saveSession, loadSession } from './store.js';
 
 function isAbortError(err: unknown): boolean {
   return (
@@ -118,6 +119,32 @@ async function authenticate(): Promise<acp.AuthenticateResponse> {
   return {};
 }
 
+function messageText(message: ModelMessage): string {
+  if (typeof message.content === 'string') return message.content;
+  return message.content
+    .map((part) => ('text' in part && typeof part.text === 'string' ? part.text : ''))
+    .join('');
+}
+
+async function replayHistory(
+  sessionId: string,
+  messages: ModelMessage[],
+  client: acp.AgentContext
+): Promise<void> {
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    const text = messageText(message);
+    if (!text) continue;
+    await client.notify(acp.methods.client.session.update, {
+      sessionId,
+      update: {
+        sessionUpdate: message.role === 'user' ? 'user_message_chunk' : 'agent_message_chunk',
+        content: { type: 'text', text },
+      },
+    });
+  }
+}
+
 async function runPrompt(
   params: acp.PromptRequest,
   client: acp.AgentContext
@@ -170,6 +197,12 @@ async function runPrompt(
     const response = await result.response;
     session.messages.push(...response.messages);
     session.alwaysAllowedWrites = toolCtx.alwaysAllowedWrites;
+    saveSession({
+      sessionId: params.sessionId,
+      cwd: session.cwd,
+      modelId: session.modelId,
+      messages: session.messages,
+    });
 
     return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
   } catch (err) {
@@ -200,7 +233,7 @@ acp
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: {
-        loadSession: false,
+        loadSession: true,
         promptCapabilities: { image: false, audio: false, embeddedContext: true },
       },
       authMethods: [
@@ -226,6 +259,24 @@ acp
     return {
       sessionId,
       configOptions: [modelConfigOption(DEFAULT_MODEL)],
+    };
+  })
+  .onRequest('session/load', async (ctx) => {
+    await requireAccessToken();
+    const persisted = loadSession(ctx.params.sessionId);
+    if (!persisted) {
+      throw acp.RequestError.invalidParams(`Session not found: ${ctx.params.sessionId}`);
+    }
+    sessions.set(ctx.params.sessionId, {
+      messages: persisted.messages,
+      abort: null,
+      modelId: MODEL_IDS.includes(persisted.modelId) ? persisted.modelId : DEFAULT_MODEL,
+      cwd: ctx.params.cwd,
+      alwaysAllowedWrites: false,
+    });
+    await replayHistory(ctx.params.sessionId, persisted.messages, ctx.client);
+    return {
+      configOptions: [modelConfigOption(sessions.get(ctx.params.sessionId)!.modelId)],
     };
   })
   .onRequest('session/set_config_option', (ctx) => {
