@@ -6,10 +6,21 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/agent.js",
-    "dev": "tsx src/agent.ts"
+    "dev": "tsx src/agent.ts",
+    "prepublishOnly": "npm run build",
+    "prepack": "npm run build",
+    "test:pack": "npm pack && tar -tzf *.tgz"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["gitlab", "duo", "ai", "acp", "agent", "chat", "assistant", "oauth"],
+  "author": "Aboobacker MK <aboobackervyd@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tachyons/duo_acp_mini.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tachyons/duo_acp_mini/issues"
+  },
+  "homepage": "https://github.com/tachyons/duo_acp_mini#readme",
   "license": "MIT",
   "type": "module",
   "dependencies": {

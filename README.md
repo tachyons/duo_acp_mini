@@ -1,5 +1,8 @@
 # GitLab Duo ACP Agent
 
+[![npm version](https://badge.fury.io/js/gitlab-duo-acp.svg)](https://www.npmjs.com/package/gitlab-duo-acp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A minimal [Agent Client Protocol (ACP)](https://agentclientprotocol.com) agent for [GitLab Duo](https://about.gitlab.com/gitlab-duo/). Chat with GitLab Duo models from any ACP-compatible client (e.g. [Zed](https://zed.dev)).
 
 ## Features
@@ -16,16 +19,40 @@ A minimal [Agent Client Protocol (ACP)](https://agentclientprotocol.com) agent f
 - Node.js 18+
 - A GitLab account with Duo access
 
-## Setup
+## Installation
+
+### Option 1: Install from npm (Recommended)
 
 ```bash
+npm install -g gitlab-duo-acp
+```
+
+### Option 2: Install from source
+
+```bash
+git clone https://github.com/tachyons/duo_acp_mini.git
+cd duo_acp_mini
 npm install
 npm run build
 ```
 
 ## Usage with Zed
 
+### If installed globally via npm:
+
 Add to Zed's `settings.json` (Cmd+, → "Open Settings"):
+
+```json
+{
+  "agent_servers": {
+    "GitLab Duo": {
+      "command": "gitlab-duo-acp"
+    }
+  }
+}
+```
+
+### If installed from source:
 
 ```json
 {

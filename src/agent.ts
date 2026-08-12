@@ -76,6 +76,7 @@ function openBrowser(url: string): void {
 async function requireAccessToken(): Promise<string> {
   const tokens = await getValidTokens(INSTANCE_URL);
   if (!tokens) {
+    process.stderr.write('No valid access token found. Authentication required.\n');
     throw acp.RequestError.authRequired();
   }
   return tokens.accessToken;
@@ -118,6 +119,15 @@ async function authenticate(): Promise<acp.AuthenticateResponse> {
   return {};
 }
 
+function isUnauthorizedError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.message.includes('401') || 
+     err.message.includes('Unauthorized') ||
+     err.message.includes('authentication'))
+  );
+}
+
 async function runPrompt(
   params: acp.PromptRequest,
   client: acp.AgentContext
@@ -127,7 +137,7 @@ async function runPrompt(
     throw acp.RequestError.invalidParams(`Session not found: ${params.sessionId}`);
   }
 
-  const accessToken = await requireAccessToken();
+  let accessToken = await requireAccessToken();
   const gitlab = createGitLab({ apiKey: accessToken, instanceUrl: INSTANCE_URL });
 
   session.abort?.abort();
@@ -176,6 +186,13 @@ async function runPrompt(
     if (abort.signal.aborted || isAbortError(err)) {
       return { stopReason: 'cancelled' };
     }
+    
+    // Handle 401 errors by refreshing token and prompting re-authentication
+    if (isUnauthorizedError(err)) {
+      process.stderr.write('Token expired or invalid. Please re-authenticate.\n');
+      throw acp.RequestError.authRequired();
+    }
+    
     throw err;
   } finally {
     if (session.abort === abort) {
@@ -200,7 +217,7 @@ acp
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: {
-        loadSession: false,
+        loadSession: true,
         promptCapabilities: { image: false, audio: false, embeddedContext: true },
       },
       authMethods: [
@@ -241,6 +258,15 @@ acp
       session.modelId = value;
     }
     return { configOptions: [modelConfigOption(session.modelId)] };
+  })
+  .onRequest('session/list', () => {
+    const sessionList = Array.from(sessions.entries()).map(([id, session]) => ({
+      sessionId: id,
+      name: `GitLab Duo (${session.modelId})`,
+      cwd: session.cwd,
+      configOptions: [modelConfigOption(session.modelId)],
+    }));
+    return { sessions: sessionList };
   })
   .onRequest('session/prompt', (ctx) => runPrompt(ctx.params, ctx.client))
   .onNotification('session/cancel', (ctx) => {

@@ -147,7 +147,7 @@ export function buildTools(ctx: ToolSessionContext): ToolSet {
             sessionUpdate: 'tool_call_update',
             toolCallId,
             status: 'completed',
-            content: [{ type: 'diff', path: filePath, oldText, newText: content }],
+            content: [{ type: 'diff', path: filePath, oldText: oldText ?? '', newText: content }],
           });
           return `Wrote ${filePath}`;
         } catch (err) {

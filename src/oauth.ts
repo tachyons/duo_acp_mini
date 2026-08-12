@@ -118,7 +118,12 @@ export async function refreshTokens(tokens: StoredTokens): Promise<StoredTokens>
     }),
   });
   if (!res.ok) {
-    throw new Error(`Token refresh failed: ${res.status} ${await res.text()}`);
+    const errorText = await res.text();
+    // If refresh token is also expired/invalid, we need full re-authentication
+    if (res.status === 401 || res.status === 400) {
+      throw new Error(`Refresh token invalid or expired. Re-authentication required.`);
+    }
+    throw new Error(`Token refresh failed: ${res.status} ${errorText}`);
   }
   const refreshed = toStoredTokens((await res.json()) as never, tokens.instanceUrl);
   saveTokens(refreshed);
@@ -131,9 +136,49 @@ export async function getValidTokens(instanceUrl: string): Promise<StoredTokens 
   if (Date.now() >= tokens.expiresAt - EXPIRY_SKEW_MS) {
     try {
       tokens = await refreshTokens(tokens);
-    } catch {
+    } catch (error) {
+      // If refresh fails, clear the invalid tokens
+      process.stderr.write(
+        `Token refresh failed: ${error instanceof Error ? error.message : 'Unknown error'}\n`
+      );
       return null;
     }
   }
   return tokens;
+}
+
+/**
+ * Helper to handle 401 errors by refreshing the token and retrying once.
+ * Use this wrapper for API calls that may receive 401 responses.
+ */
+export async function fetchWithTokenRefresh(
+  url: string,
+  options: RequestInit,
+  tokens: StoredTokens
+): Promise<Response> {
+  let response = await fetch(url, options);
+  
+  // If we get a 401, try refreshing the token once and retry
+  if (response.status === 401) {
+    try {
+      const refreshed = await refreshTokens(tokens);
+      
+      // Update the Authorization header with the new token
+      const newOptions = {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${refreshed.accessToken}`,
+        },
+      };
+      
+      response = await fetch(url, newOptions);
+    } catch (error) {
+      // If refresh fails, return the original 401 response
+      // The caller should handle this by re-authenticating
+      process.stderr.write(`Token refresh failed on 401: ${error instanceof Error ? error.message : 'Unknown error'}\n`);
+    }
+  }
+  
+  return response;
 }

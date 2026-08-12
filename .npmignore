@@ -1,0 +1,13 @@
+src/
+node_modules/
+*.ts
+!*.d.ts
+tsconfig.json
+.git
+.gitignore
+.DS_Store
+*.log
+coverage/
+.vscode/
+.idea/
+*.tgz
