@@ -38,9 +38,22 @@ npm run build
 
 ## Usage with Zed
 
-### If installed globally via npm:
+### Option 1: Run with npx (No installation required)
 
 Add to Zed's `settings.json` (Cmd+, → "Open Settings"):
+
+```json
+{
+  "agent_servers": {
+    "GitLab Duo": {
+      "command": "npx",
+      "args": ["gitlab-duo-acp"]
+    }
+  }
+}
+```
+
+### Option 2: If installed globally via npm:
 
 ```json
 {
@@ -52,7 +65,7 @@ Add to Zed's `settings.json` (Cmd+, → "Open Settings"):
 }
 ```
 
-### If installed from source:
+### Option 3: If installed from source:
 
 ```json
 {
@@ -101,6 +114,8 @@ npm run build   # compile to dist/
 | `initialize`                 | Advertises `gitlab-oauth` auth method        |
 | `authenticate`               | Runs the OAuth device flow                   |
 | `session/new`                | Returns model select in `configOptions`      |
+| `session/list`               | Lists all active sessions                    |
+| `session/load`               | Loads an existing session from backend       |
 | `session/set_config_option`  | Switches the model for the session           |
 | `session/prompt`             | Streams `agent_message_chunk` updates        |
 | `session/cancel`             | Aborts the in-flight prompt                  |

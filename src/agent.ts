@@ -268,6 +268,19 @@ acp
     }));
     return { sessions: sessionList };
   })
+  .onRequest('session/load', async (ctx) => {
+    await requireAccessToken();
+    const session = sessions.get(ctx.params.sessionId);
+    if (!session) {
+      throw acp.RequestError.invalidParams(`Session not found: ${ctx.params.sessionId}`);
+    }
+    return {
+      sessionId: ctx.params.sessionId,
+      name: `GitLab Duo (${session.modelId})`,
+      cwd: session.cwd,
+      configOptions: [modelConfigOption(session.modelId)],
+    };
+  })
   .onRequest('session/prompt', (ctx) => runPrompt(ctx.params, ctx.client))
   .onNotification('session/cancel', (ctx) => {
     sessions.get(ctx.params.sessionId)?.abort?.abort();
