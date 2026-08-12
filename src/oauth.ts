@@ -10,7 +10,7 @@ export interface StoredTokens {
   instanceUrl: string;
 }
 
-const CLIENT_ID = process.env.GITLAB_OAUTH_CLIENT_ID ?? OPENCODE_GITLAB_AUTH_CLIENT_ID;
+const CLIENT_ID = process.env.GITLAB_OAUTH_CLIENT_ID ?? "7dc7f5cfcad711feacde5d021a40403a66b3d3d1affabfbada63dc9fe91ec980";
 const SCOPE = 'api';
 const EXPIRY_SKEW_MS = 60_000;
 
@@ -157,12 +157,12 @@ export async function fetchWithTokenRefresh(
   tokens: StoredTokens
 ): Promise<Response> {
   let response = await fetch(url, options);
-  
+
   // If we get a 401, try refreshing the token once and retry
   if (response.status === 401) {
     try {
       const refreshed = await refreshTokens(tokens);
-      
+
       // Update the Authorization header with the new token
       const newOptions = {
         ...options,
@@ -171,7 +171,7 @@ export async function fetchWithTokenRefresh(
           Authorization: `Bearer ${refreshed.accessToken}`,
         },
       };
-      
+
       response = await fetch(url, newOptions);
     } catch (error) {
       // If refresh fails, return the original 401 response
@@ -179,6 +179,6 @@ export async function fetchWithTokenRefresh(
       process.stderr.write(`Token refresh failed on 401: ${error instanceof Error ? error.message : 'Unknown error'}\n`);
     }
   }
-  
+
   return response;
 }
