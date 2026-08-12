@@ -270,10 +270,21 @@ acp
   })
   .onRequest('session/load', async (ctx) => {
     await requireAccessToken();
-    const session = sessions.get(ctx.params.sessionId);
+    let session = sessions.get(ctx.params.sessionId);
+    
+    // If session doesn't exist (e.g., after agent restart), create a new one
     if (!session) {
-      throw acp.RequestError.invalidParams(`Session not found: ${ctx.params.sessionId}`);
+      process.stderr.write(`Session ${ctx.params.sessionId} not found, creating new session\n`);
+      session = {
+        messages: [],
+        abort: null,
+        modelId: DEFAULT_MODEL,
+        cwd: ctx.params.cwd || process.cwd(),
+        alwaysAllowedWrites: false,
+      };
+      sessions.set(ctx.params.sessionId, session);
     }
+    
     return {
       sessionId: ctx.params.sessionId,
       name: `GitLab Duo (${session.modelId})`,

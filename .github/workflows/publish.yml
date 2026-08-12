@@ -6,7 +6,65 @@ on:
   workflow_dispatch:
 
 jobs:
+  create-tag-and-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    outputs:
+      release-created: ${{ steps.create-release.outputs.release-created }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from package.json
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: v${VERSION}"
+
+      - name: Check if tag exists
+        id: check-tag
+        run: |
+          if git rev-parse "refs/tags/${{ steps.get-version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag ${{ steps.get-version.outputs.version }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag ${{ steps.get-version.outputs.version }} does not exist"
+          fi
+
+      - name: Create tag
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ steps.get-version.outputs.version }} -m "Release ${{ steps.get-version.outputs.version }}"
+          git push origin ${{ steps.get-version.outputs.version }}
+
+      - name: Create Release
+        id: create-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view ${{ steps.get-version.outputs.version }} >/dev/null 2>&1; then
+            echo "Release already exists"
+            echo "release-created=false" >> $GITHUB_OUTPUT
+          else
+            gh release create ${{ steps.get-version.outputs.version }} \
+              --title "Release ${{ steps.get-version.outputs.version }}" \
+              --generate-notes
+            echo "release-created=true" >> $GITHUB_OUTPUT
+          fi
+
   publish-npm:
+    needs: [create-tag-and-release]
+    if: |
+      always() && 
+      (github.event_name == 'release' || 
+       (github.event_name == 'workflow_dispatch' && needs.create-tag-and-release.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,6 +87,11 @@ jobs:
       - run: npm publish --access public
 
   publish-github:
+    needs: [create-tag-and-release]
+    if: |
+      always() && 
+      (github.event_name == 'release' || 
+       (github.event_name == 'workflow_dispatch' && needs.create-tag-and-release.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
