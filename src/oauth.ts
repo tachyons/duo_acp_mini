@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { OPENCODE_GITLAB_AUTH_CLIENT_ID } from 'gitlab-ai-provider';
 
 export interface StoredTokens {
   accessToken: string;
